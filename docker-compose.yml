@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  upload-service:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
+      - AZURE_STORAGE_RAW_CONTAINER=${AZURE_STORAGE_RAW_CONTAINER}
+      - AZURE_STORAGE_PROCESSED_CONTAINER=${AZURE_STORAGE_PROCESSED_CONTAINER}
+      - RABBITMQ_URL=amqp://admin:admin123@rabbitmq:5672
+      - TRANSCODE_QUEUE=video_transcode_queue
+      - MAX_FILE_SIZE=1073741824
+      - ALLOWED_FORMATS=mp4,mov,avi,webm
+      - LOG_LEVEL=info
+    depends_on:
+      - azurite
+      - rabbitmq
+    volumes:
+      - ./logs:/usr/src/app/logs
+    networks:
+      - streamhive
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0"
+    volumes:
+      - azurite_data:/data
+    networks:
+      - streamhive
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "10000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  rabbitmq:
+    image: rabbitmq:3.11-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - streamhive
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+volumes:
+  azurite_data:
+  rabbitmq_data:
+
+networks:
+  streamhive:
+    driver: bridge
