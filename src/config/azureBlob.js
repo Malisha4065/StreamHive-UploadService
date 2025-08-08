@@ -3,6 +3,29 @@ const logger = require('../utils/logger')
 
 let blobServiceClient = null
 
+// Sanitize metadata to conform to Azure rules:
+// - Keys must start with a letter or underscore; subsequent chars letters, numbers, or underscores
+// - Keys/values must be ASCII
+const sanitizeAzureMetadata = (metadata) => {
+  if (!metadata || typeof metadata !== 'object') return {}
+  const sanitized = {}
+  for (const [rawKey, rawVal] of Object.entries(metadata)) {
+    if (rawVal === undefined || rawVal === null) continue
+    let key = String(rawKey)
+      .replace(/[^A-Za-z0-9_]/g, '_') // replace invalid chars with underscore
+      .replace(/_+/g, '_') // collapse multiple underscores
+    if (!/^[A-Za-z_]/.test(key)) {
+      key = `_${key}`
+    }
+    // Ensure value is ASCII and avoid control characters
+    const val = String(rawVal)
+      .replace(/[\r\n\t]/g, ' ')
+      .replace(/[^\x20-\x7E]/g, '')
+    sanitized[key] = val
+  }
+  return sanitized
+}
+
 const connectAzureBlob = async () => {
   try {
     const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME
@@ -34,10 +57,10 @@ const connectAzureBlob = async () => {
     try {
       await rawContainerClient.createIfNotExists({
         access: 'blob', // Private container
-        metadata: {
+        metadata: sanitizeAzureMetadata({
           purpose: 'Raw video uploads',
           service: 'streamhive-upload'
-        }
+        })
       })
       logger.info(`Raw container ready: ${rawContainer}`)
     } catch (error) {
@@ -49,10 +72,10 @@ const connectAzureBlob = async () => {
     try {
       await processedContainerClient.createIfNotExists({
         access: 'blob', // Public read access for processed videos
-        metadata: {
+        metadata: sanitizeAzureMetadata({
           purpose: 'Processed video files',
           service: 'streamhive-transcode'
-        }
+        })
       })
       logger.info(`Processed container ready: ${processedContainer}`)
     } catch (error) {
@@ -82,12 +105,12 @@ const uploadBlob = async (containerName, blobName, data, options = {}) => {
     const blockBlobClient = containerClient.getBlockBlobClient(blobName)
 
     const uploadOptions = {
+      ...options,
       blobHTTPHeaders: {
         blobContentType: options.contentType || 'application/octet-stream'
       },
-      metadata: options.metadata || {},
-      tags: options.tags || {},
-      ...options
+      metadata: sanitizeAzureMetadata(options.metadata || {}),
+      tags: options.tags || {}
     }
 
     const uploadResponse = await blockBlobClient.upload(data, data.length, uploadOptions)

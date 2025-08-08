@@ -18,32 +18,14 @@ services:
       - ALLOWED_FORMATS=mp4,mov,avi,webm
       - LOG_LEVEL=info
     depends_on:
-      - azurite
       - rabbitmq
     volumes:
       - ./logs:/usr/src/app/logs
     networks:
       - streamhive
 
-  azurite:
-    image: mcr.microsoft.com/azure-storage/azurite:latest
-    ports:
-      - "10000:10000"
-      - "10001:10001"
-      - "10002:10002"
-    command: "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0"
-    volumes:
-      - azurite_data:/data
-    networks:
-      - streamhive
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "10000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   rabbitmq:
-    image: rabbitmq:3.11-management-alpine
+    image: rabbitmq:4.0-management
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -61,7 +43,6 @@ services:
       retries: 3
 
 volumes:
-  azurite_data:
   rabbitmq_data:
 
 networks:

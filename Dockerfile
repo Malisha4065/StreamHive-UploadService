@@ -11,8 +11,12 @@ WORKDIR /usr/src/app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (prefer ci when possible, fallback to install if lockfile is out of sync)
+RUN if [ -f package-lock.json ]; then \
+      npm ci --omit=dev --loglevel=verbose || npm install --omit=dev --loglevel=verbose; \
+    else \
+      npm install --omit=dev --loglevel=verbose; \
+    fi
 
 # Copy source code
 COPY src/ ./src/
