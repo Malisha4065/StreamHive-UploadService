@@ -82,8 +82,8 @@ const uploadVideo = async (uploadData) => {
       updatedAt: new Date()
     })
 
-    // Prepare transcode job message
-    const transcodeMessage = {
+    // Prepare uploaded event for video catalog service
+    const uploadedEvent = {
       uploadId,
       userId,
       username,
@@ -95,15 +95,12 @@ const uploadVideo = async (uploadData) => {
       category,
       rawVideoPath,
       containerName,
-      blobUrl: uploadResult.url,
-      metadata,
-      resolutions: ['1080p', '720p', '480p', '360p'], // Target resolutions
-      createdAt: new Date().toISOString()
+      blobUrl: uploadResult.url
     }
 
-    // Publish to transcode queue
-    logger.info(`Publishing transcode job for upload: ${uploadId}`)
-    await publishToTranscodeQueue(transcodeMessage)
+    // Publish uploaded event to catalog service
+    logger.info(`Publishing uploaded event for catalog: ${uploadId}`)
+    await publishToTranscodeQueue(uploadedEvent)
 
     // Update status
     uploadStatus.set(uploadId, {
