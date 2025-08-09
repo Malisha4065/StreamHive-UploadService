@@ -9,15 +9,14 @@ const connectRabbitMQ = async () => {
     connection = await amqp.connect(process.env.RABBITMQ_URL)
     channel = await connection.createChannel()
 
-    // Create transcode queue
-    const queueName = process.env.TRANSCODE_QUEUE || 'video_transcode_queue'
-    await channel.assertQueue(queueName, {
-      durable: true // Queue survives broker restarts
-    })
+    // Declare topic exchange for event routing
+    const exchange = process.env.AMQP_EXCHANGE || 'streamhive'
+    await channel.assertExchange(exchange, 'topic', { durable: true })
 
-    logger.info(`RabbitMQ connected and queue '${queueName}' ready`)
+    // (Optional) declare upload queue for local diagnostics (transcoder will declare its own)
+    const uploadRoutingKey = process.env.AMQP_UPLOAD_ROUTING_KEY || 'video.uploaded'
+    logger.info(`RabbitMQ connected. Using exchange='${exchange}', routingKey='${uploadRoutingKey}'`)
 
-    // Handle connection events
     connection.on('error', (error) => {
       logger.error('RabbitMQ connection error:', error)
     })
@@ -39,18 +38,20 @@ const publishToTranscodeQueue = async (message) => {
       throw new Error('RabbitMQ channel not initialized')
     }
 
-    const queueName = process.env.TRANSCODE_QUEUE || 'video_transcode_queue'
-    const messageBuffer = Buffer.from(JSON.stringify(message))
+    const exchange = process.env.AMQP_EXCHANGE || 'streamhive'
+    const uploadRoutingKey = process.env.AMQP_UPLOAD_ROUTING_KEY || 'video.uploaded'
 
-    await channel.sendToQueue(queueName, messageBuffer, {
-      persistent: true, // Message survives broker restarts
+    const payload = Buffer.from(JSON.stringify(message))
+    channel.publish(exchange, uploadRoutingKey, payload, {
+      contentType: 'application/json',
+      persistent: true,
       timestamp: Date.now(),
       messageId: message.uploadId
     })
 
-    logger.info(`Message published to transcode queue: ${message.uploadId}`)
+    logger.info(`Published upload event: ${message.uploadId}`)
   } catch (error) {
-    logger.error('Failed to publish to transcode queue:', error)
+    logger.error('Failed to publish upload event:', error)
     throw error
   }
 }
@@ -64,12 +65,8 @@ const getRabbitMQChannel = () => {
 
 const closeRabbitMQ = async () => {
   try {
-    if (channel) {
-      await channel.close()
-    }
-    if (connection) {
-      await connection.close()
-    }
+    if (channel) await channel.close()
+    if (connection) await connection.close()
     logger.info('RabbitMQ connection closed')
   } catch (error) {
     logger.error('Error closing RabbitMQ connection:', error)

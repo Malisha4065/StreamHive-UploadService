@@ -7,7 +7,7 @@ A Node.js microservice for handling video uploads in the StreamHive platform.
 - ✅ Video file upload (MP4, MOV, AVI, WebM)
 - 🔐 JWT-based authentication
 - 📁 Azure Blob Storage integration
-- 🔄 RabbitMQ message queue for transcoding pipeline
+- 🔄 RabbitMQ message queue (topic exchange) for transcoding pipeline
 - 📊 Metadata extraction and validation
 - 🛡️ Rate limiting and security headers
 - 📝 Comprehensive logging
@@ -95,11 +95,20 @@ GET /health
 │   Client App    │────│  Upload Service │────│ Azure Blob Store│
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                               │
-                              │
+                              ▼
                        ┌─────────────────┐
-                       │    RabbitMQ     │
-                       │ (Transcode Queue)│
+                       │   RabbitMQ      │ (topic exchange 'streamhive')
                        └─────────────────┘
+                              │ routing key: video.uploaded
+                              ▼
+                     ┌────────────────────┐
+                     │  TranscoderService │ (publishes video.transcoded)
+                     └────────────────────┘
+                              │ routing key: video.transcoded
+                              ▼
+                     ┌────────────────────┐
+                     │ VideoCatalogService│
+                     └────────────────────┘
 ```
 
 ## Environment Variables
@@ -115,6 +124,8 @@ GET /health
 | `AZURE_STORAGE_RAW_CONTAINER` | Container for raw videos | Yes | streamhive-raw-videos |
 | `AZURE_STORAGE_PROCESSED_CONTAINER` | Container for processed videos | Yes | streamhive-processed-videos |
 | `RABBITMQ_URL` | RabbitMQ connection URL | Yes | - |
+| `AMQP_EXCHANGE` | Topic exchange for events | No | streamhive |
+| `AMQP_UPLOAD_ROUTING_KEY` | Routing key for upload events | No | video.uploaded |
 | `MAX_FILE_SIZE` | Max upload size (bytes) | No | 1073741824 |
 | `ALLOWED_FORMATS` | Allowed video formats | No | mp4,mov,avi,webm |
 
