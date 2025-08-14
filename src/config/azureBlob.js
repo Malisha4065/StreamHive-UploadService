@@ -1,7 +1,20 @@
 const { BlobServiceClient, StorageSharedKeyCredential, generateBlobSASQueryParameters, BlobSASPermissions } = require('@azure/storage-blob')
 const logger = require('../utils/logger')
+const fs = require('fs')
 
 let blobServiceClient = null
+
+// Helper function to read secret from file or fallback to environment variable
+const getSecret = (filePath, envVar) => {
+  try {
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath, 'utf8').trim()
+    }
+  } catch (error) {
+    logger.warn(`Failed to read secret from file ${filePath}: ${error.message}`)
+  }
+  return process.env[envVar]
+}
 
 // Sanitize metadata to conform to Azure rules:
 // - Keys must start with a letter or underscore; subsequent chars letters, numbers, or underscores
@@ -28,9 +41,9 @@ const sanitizeAzureMetadata = (metadata) => {
 
 const connectAzureBlob = async () => {
   try {
-    const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME
-    const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY
-    const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING
+    const accountName = getSecret('/mnt/secrets-store/azure-storage-account', 'AZURE_STORAGE_ACCOUNT_NAME')
+    const accountKey = getSecret('/mnt/secrets-store/azure-storage-key', 'AZURE_STORAGE_ACCOUNT_KEY')
+    const connectionString = getSecret('/mnt/secrets-store/azure-storage-connection-string', 'AZURE_STORAGE_CONNECTION_STRING')
     
     if (connectionString) {
       // Use connection string if provided
@@ -47,8 +60,8 @@ const connectAzureBlob = async () => {
     }
 
     // Check if containers exist, create if not
-    const rawContainer = process.env.AZURE_STORAGE_RAW_CONTAINER || 'streamhive-raw-videos'
-    const processedContainer = process.env.AZURE_STORAGE_PROCESSED_CONTAINER || 'streamhive-processed-videos'
+    const rawContainer = getSecret('/mnt/secrets-store/azure-storage-raw-container', 'AZURE_STORAGE_RAW_CONTAINER') || 'streamhive-raw-videos'
+    const processedContainer = getSecret('/mnt/secrets-store/azure-storage-processed-container', 'AZURE_STORAGE_PROCESSED_CONTAINER') || 'streamhive-processed-videos'
     
     const rawContainerClient = blobServiceClient.getContainerClient(rawContainer)
     const processedContainerClient = blobServiceClient.getContainerClient(processedContainer)
@@ -130,8 +143,8 @@ const uploadBlob = async (containerName, blobName, data, options = {}) => {
 
 const generateSASUrl = (containerName, blobName, permissions = 'r', expiryHours = 24) => {
   try {
-    const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME
-    const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY
+    const accountName = getSecret('/mnt/secrets-store/azure-storage-account', 'AZURE_STORAGE_ACCOUNT_NAME')
+    const accountKey = getSecret('/mnt/secrets-store/azure-storage-key', 'AZURE_STORAGE_ACCOUNT_KEY')
 
     if (!accountName || !accountKey) {
       throw new Error('Account name and key required for SAS generation')
