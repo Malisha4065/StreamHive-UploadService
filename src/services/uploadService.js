@@ -2,6 +2,19 @@ const { getBlobServiceClient, uploadBlob } = require('../config/azureBlob')
 const { publishToTranscodeQueue } = require('../config/rabbitmq')
 const { extractVideoMetadata } = require('../utils/videoUtils')
 const logger = require('../utils/logger')
+const fs = require('fs')
+
+// Helper function to read secret from file or fallback to environment variable
+const getSecret = (filePath, envVar) => {
+  try {
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath, 'utf8').trim()
+    }
+  } catch (error) {
+    logger.warn(`Failed to read secret from file ${filePath}: ${error.message}`)
+  }
+  return process.env[envVar]
+}
 
 // In-memory storage for upload status (in production, use Redis or database)
 const uploadStatus = new Map()
@@ -36,7 +49,7 @@ const uploadVideo = async (uploadData) => {
 
     // Generate storage paths
     const rawVideoPath = `raw/${userId}/${uploadId}${fileExtension}`
-    const containerName = process.env.AZURE_STORAGE_RAW_CONTAINER || 'streamhive-raw-videos'
+    const containerName = getSecret('/mnt/secrets-store/azure-storage-raw-container', 'AZURE_STORAGE_RAW_CONTAINER') || 'streamhive-raw-videos'
 
     // Extract video metadata
     logger.info(`Extracting metadata for upload: ${uploadId}`)

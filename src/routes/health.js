@@ -2,6 +2,19 @@ const express = require('express')
 const { getBlobServiceClient } = require('../config/azureBlob')
 const { getRabbitMQChannel } = require('../config/rabbitmq')
 const logger = require('../utils/logger')
+const fs = require('fs')
+
+// Helper function to read secret from file or fallback to environment variable
+const getSecret = (filePath, envVar) => {
+  try {
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath, 'utf8').trim()
+    }
+  } catch (error) {
+    logger.warn(`Failed to read secret from file ${filePath}: ${error.message}`)
+  }
+  return process.env[envVar]
+}
 
 const router = express.Router()
 
@@ -19,7 +32,7 @@ router.get('/', async (req, res) => {
   // Check Azure Blob Storage connection
   try {
     const blobServiceClient = getBlobServiceClient()
-    const containerName = process.env.AZURE_STORAGE_RAW_CONTAINER || 'streamhive-raw-videos'
+    const containerName = getSecret('/mnt/secrets-store/azure-storage-raw-container', 'AZURE_STORAGE_RAW_CONTAINER') || 'streamhive-raw-videos'
     const containerClient = blobServiceClient.getContainerClient(containerName)
     await containerClient.getProperties()
     health.dependencies.azureBlob = 'healthy'
@@ -58,7 +71,7 @@ router.get('/ready', async (req, res) => {
   try {
     // Check if all dependencies are ready
     const blobServiceClient = getBlobServiceClient()
-    const containerName = process.env.AZURE_STORAGE_RAW_CONTAINER || 'streamhive-raw-videos'
+    const containerName = getSecret('/mnt/secrets-store/azure-storage-raw-container', 'AZURE_STORAGE_RAW_CONTAINER') || 'streamhive-raw-videos'
     const containerClient = blobServiceClient.getContainerClient(containerName)
     await containerClient.getProperties()
     
