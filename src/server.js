@@ -12,6 +12,7 @@ const healthRoutes = require('./routes/health')
 const errorHandler = require('./middleware/errorHandler')
 
 const app = express()
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001
 
 // Security middleware
