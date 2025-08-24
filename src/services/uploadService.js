@@ -1,4 +1,4 @@
-const { getBlobServiceClient, uploadBlob } = require('../config/azureBlob')
+const { uploadBlob } = require('../config/azureBlob')
 const { publishToTranscodeQueue } = require('../config/rabbitmq')
 const { extractVideoMetadata } = require('../utils/videoUtils')
 const logger = require('../utils/logger')

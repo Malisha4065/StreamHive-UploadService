@@ -24,13 +24,15 @@ router.post('/',
         })
       }
 
+      const { id: userId, email: username } = req.user
+
       const uploadId = uuidv4()
       const fileExtension = path.extname(req.file.originalname).toLowerCase()
 
       const uploadData = {
         uploadId,
-        userId: req.user.userId,
-        username: req.user.username,
+        userId,
+        username,
         originalFilename: req.file.originalname,
         fileExtension,
         fileSize: req.file.size,
@@ -39,7 +41,7 @@ router.post('/',
         ...req.validatedData
       }
 
-      logger.info(`Upload initiated by user ${req.user.userId}: ${uploadId}`)
+      logger.info(`Upload initiated by user ${userId}: ${uploadId}`)
 
       const result = await uploadVideo(uploadData)
 
@@ -65,7 +67,7 @@ router.get('/:uploadId/status',
   async (req, res, next) => {
     try {
       const { uploadId } = req.params
-      const userId = req.user.userId
+      const userId = req.user.id
 
       const status = await getUploadStatus(uploadId, userId)
 
@@ -92,7 +94,7 @@ router.get('/my-uploads',
   authenticateToken,
   async (req, res, next) => {
     try {
-      const userId = req.user.userId
+      const userId = req.user.id
       const page = parseInt(req.query.page) || 1
       const limit = Math.min(parseInt(req.query.limit) || 10, 50)
       const status = req.query.status // filter by status
