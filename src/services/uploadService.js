@@ -98,7 +98,7 @@ const uploadVideo = async (uploadData) => {
     // Prepare uploaded event for video catalog service
     const uploadedEvent = {
       uploadId,
-      userId,
+      userId: userId.toString(),
       username,
       originalFilename,
       title,
