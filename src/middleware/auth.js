@@ -1,4 +1,13 @@
 const logger = require('../utils/logger')
+const { createFetchBreaker, withRetry } = require('../lib/resilience')
+
+// Reuse a single circuit breaker instance for auth validation
+const authBreaker = createFetchBreaker({
+  timeout: parseInt(process.env.AUTH_TIMEOUT_MS || '3000'),
+  errorThresholdPercentage: parseInt(process.env.AUTH_CB_ERROR_PCT || '50'),
+  resetTimeout: parseInt(process.env.AUTH_CB_RESET_MS || '10000'),
+  volumeThreshold: parseInt(process.env.AUTH_CB_VOLUME || '5')
+})
 
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers.authorization
@@ -13,37 +22,41 @@ const authenticateToken = async (req, res, next) => {
 
   try {
     // Define the URL for the security service
-    const securityServiceUrl = process.env.SECURITY_SERVICE_URL || 'http://security-service:8080/auth/validate';
+    const securityServiceUrl = process.env.SECURITY_SERVICE_URL || 'http://security-service:8080/auth/validate'
 
-    // Use fetch to validate the token with the SecurityService
-    const response = await fetch(securityServiceUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json' // Required for fetch with a JSON body
-      },
-      body: JSON.stringify({}) // The body must be a string
-    })
+    const response = await withRetry(
+      () => authBreaker.fire(securityServiceUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      }),
+      {
+        retries: parseInt(process.env.AUTH_RETRIES || '2'),
+        minTimeout: parseInt(process.env.AUTH_RETRY_MIN || '200'),
+        maxTimeout: parseInt(process.env.AUTH_RETRY_MAX || '1000')
+      }
+    )
 
-    // CRITICAL: fetch does NOT throw an error for bad HTTP statuses (like 4xx or 5xx).
-    // You must check the 'ok' status and throw an error manually to trigger the catch block.
     if (!response.ok) {
-      // Create an error to be caught by the catch block below
-      throw new Error(`Token validation failed with status: ${response.status}`);
+      throw new Error(`Token validation failed with status: ${response.status}`)
     }
 
-    // Parse the JSON response from the security service
-    const responseData = await response.json();
-
-    req.user = responseData.user;
-    next();
+    const responseData = await response.json()
+    req.user = responseData.user
+    next()
   } catch (err) {
-    // This will now catch both network errors from fetch and the manual error thrown above
-    logger.warn(`Invalid token attempt from IP: ${req.ip} - ${err.message}`);
-    return res.status(403).json({
-      success: false,
-      error: 'Invalid or expired token'
-    })
+    // Network/timeout/circuit errors vs actual 4xx auth failures
+    const msg = err?.message || ''
+    if (/^HTTP 4\d\d/.test(msg)) {
+      logger.warn(`Invalid token attempt from IP: ${req.ip} - ${msg}`)
+      return res.status(403).json({ success: false, error: 'Invalid or expired token' })
+    }
+
+    logger.error(`Auth service unavailable for IP ${req.ip}: ${msg}`)
+    return res.status(503).json({ success: false, error: 'Authentication service unavailable' })
   }
 }
 
